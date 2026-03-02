@@ -1,74 +1,11 @@
 default_platform(:ios)
 
 platform :ios do
-  #
-  # ── Shared helpers ──────────────────────────────────────────────────────
-  #
-
-  desc "Setup App Store Connect API key from environment"
-  private_lane :setup_api_key do
-    app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-      key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_ID']}.p8"),
-      in_house: false
-    )
-  end
-
-  desc "Build the Flutter iOS app"
-  private_lane :flutter_build do |options|
-    # Run flutter build from the project root
+  desc "Build iOS release (no codesign)"
+  lane :build_ios do
     Dir.chdir("../..") do
       sh("flutter", "build", "ios", "--release", "--no-codesign")
     end
-  end
-
-  desc "Build IPA with gym"
-  private_lane :build_ipa do |options|
-    build_app(
-      workspace: "Runner.xcworkspace",
-      scheme: "Runner",
-      export_method: options[:export_method] || "app-store",
-      output_directory: ".",
-      output_name: "Runner.ipa",
-      clean: true,
-      xcargs: "-allowProvisioningUpdates"
-    )
-  end
-
-  #
-  # ── CI Lanes ────────────────────────────────────────────────────────────
-  #
-
-  desc "Build only — no upload (for PRs and non-main branches)"
-  lane :gha_build_only do
-    setup_api_key
-    flutter_build
-    build_ipa(export_method: "app-store")
-    UI.success("✅ iOS build completed successfully (no upload)")
-  end
-
-  desc "Build and deploy to TestFlight (development)"
-  lane :gha_testflight_dev do
-    setup_api_key
-    flutter_build
-    build_ipa(export_method: "app-store")
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true,
-      distribute_external: false
-    )
-    UI.success("✅ Development build uploaded to TestFlight")
-  end
-
-  desc "Build and deploy to TestFlight (production release)"
-  lane :gha_release_prod do
-    setup_api_key
-    flutter_build
-    build_ipa(export_method: "app-store")
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true,
-      distribute_external: false
-    )
-    UI.success("✅ Production build uploaded to TestFlight")
+    UI.success("✅ iOS build completed successfully")
   end
 end

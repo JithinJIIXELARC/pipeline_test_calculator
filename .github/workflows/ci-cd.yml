@@ -6,15 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Build environment"
-        required: false
-        default: "development"
-        type: choice
-        options:
-          - development
-          - production
 
 # Cancel in-progress runs for the same branch/PR
 concurrency:
@@ -28,8 +19,6 @@ jobs:
   build-ios:
     name: Build iOS
     runs-on: macos-15
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout code
@@ -39,90 +28,19 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
-          flutter-version-file: pubspec.yaml
-          cache: true
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-          bundler-cache: true
-          working-directory: ios
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
 
-      - name: Create App Store Connect API Key
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-        working-directory: ios
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$API_KEY_CONTENT" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8
-
-      - name: Import Certificate
-        env:
-          IOS_CERTIFICATE_P12: ${{ secrets.IOS_CERTIFICATE_P12 }}
-        working-directory: ios
-        run: |
-          echo "$IOS_CERTIFICATE_P12" | base64 --decode > certificate.p12
-
-      - name: Create keychain and import certificate
-        env:
-          KEYCHAIN_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-        working-directory: ios
-        run: |
-          # Create a temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-
-          # Import the certificate
-          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-
-          # Verify
-          security find-identity -v -p codesigning build.keychain
-
-      - name: Build with Fastlane
-        env:
-          FASTLANE_TEAM_ID: ${{ secrets.FASTLANE_TEAM_ID }}
-          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_NAME: build.keychain
-          KEYCHAIN_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          ENVIRONMENT: ${{ inputs.environment || 'development' }}
-          GITHUB_REF: ${{ github.ref }}
-          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: 120
-          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: 6
-        working-directory: ios
-        run: |
-          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
-            if [[ "$ENVIRONMENT" == "development" ]]; then
-              bundle exec fastlane gha_testflight_dev
-            else
-              bundle exec fastlane gha_release_prod
-            fi
-          else
-            bundle exec fastlane gha_build_only
-          fi
-
-      - name: Clean up keychain
-        if: always()
-        run: |
-          security delete-keychain build.keychain || true
-
-      - name: Upload IPA artifact
+      - name: Upload iOS build artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-release-ipa
-          path: ios/Runner.ipa
+          name: ios-release-build
+          path: build/ios/iphoneos/Runner.app
 
   # ────────────────────────────────────────────────────────────────────────
   # Android Build
@@ -130,8 +48,6 @@ jobs:
   build-android:
     name: Build Android
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout code
@@ -147,44 +63,12 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
-          flutter-version-file: pubspec.yaml
-          cache: true
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-          bundler-cache: true
-          working-directory: android
-
-      - name: Decode Android keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release-keystore.jks
-
-            cat > android/key.properties << EOF
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyPassword=$ANDROID_KEY_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          storeFile=release-keystore.jks
-          EOF
-
-            echo "✅ Keystore decoded and key.properties created"
-          else
-            echo "⚠️ No keystore secret found — using debug signing"
-          fi
-
-      - name: Build APK with Fastlane
-        working-directory: android
-        run: bundle exec fastlane build_apk
+      - name: Build APK
+        run: flutter build apk --release
 
       - name: Upload APK artifact
         if: success()
@@ -192,9 +76,3 @@ jobs:
         with:
           name: android-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Clean up keystore
-        if: always()
-        run: |
-          rm -f android/app/release-keystore.jks
-          rm -f android/key.properties

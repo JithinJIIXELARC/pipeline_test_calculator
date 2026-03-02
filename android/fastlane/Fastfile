@@ -1,41 +1,18 @@
 default_platform(:android)
 
 platform :android do
-  #
-  # ── Build Lanes ─────────────────────────────────────────────────────────
-  #
-
   desc "Build a release APK"
   lane :build_apk do
-    # Run flutter build from the project root
     Dir.chdir("../..") do
       sh("flutter", "build", "apk", "--release")
     end
 
-    # The APK is output to build/app/outputs/flutter-apk/app-release.apk
     apk_path = File.expand_path("../../build/app/outputs/flutter-apk/app-release.apk")
 
     if File.exist?(apk_path)
       UI.success("✅ APK built successfully at: #{apk_path}")
     else
       UI.user_error!("❌ APK not found at expected path: #{apk_path}")
-    end
-  end
-
-  desc "Build a release App Bundle (AAB)"
-  lane :build_aab do
-    # Run flutter build from the project root
-    Dir.chdir("../..") do
-      sh("flutter", "build", "appbundle", "--release")
-    end
-
-    # The AAB is output to build/app/outputs/bundle/release/app-release.aab
-    aab_path = File.expand_path("../../build/app/outputs/bundle/release/app-release.aab")
-
-    if File.exist?(aab_path)
-      UI.success("✅ AAB built successfully at: #{aab_path}")
-    else
-      UI.user_error!("❌ AAB not found at expected path: #{aab_path}")
     end
   end
 end
