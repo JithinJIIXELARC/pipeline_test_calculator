@@ -1,11 +1,21 @@
 default_platform(:ios)
 
 platform :ios do
-  desc "Build iOS release (no codesign)"
-  lane :build_ios do
+  desc "Build iOS release and package as IPA (no codesign)"
+  lane :build_ipa do
+    # Build the Flutter iOS app without code signing
     Dir.chdir("../..") do
       sh("flutter", "build", "ios", "--release", "--no-codesign")
     end
-    UI.success("✅ iOS build completed successfully")
+
+    # Package .app into .ipa
+    Dir.chdir("../..") do
+      sh("mkdir", "-p", "Payload")
+      sh("cp", "-r", "build/ios/iphoneos/Runner.app", "Payload/")
+      sh("zip", "-r", "Runner.ipa", "Payload")
+      sh("rm", "-rf", "Payload")
+    end
+
+    UI.success("✅ IPA built successfully at: Runner.ipa")
   end
 end

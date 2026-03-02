@@ -32,15 +32,25 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      # - name: Build iOS (no codesign) — .app only
+      #   run: flutter build ios --release --no-codesign
+
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
 
-      - name: Upload iOS build artifact
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r Runner.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-release-build
-          path: build/ios/iphoneos/Runner.app
+          name: ios-release-ipa
+          path: Runner.ipa
 
   # ────────────────────────────────────────────────────────────────────────
   # Android Build
